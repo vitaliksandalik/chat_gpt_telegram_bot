@@ -2,7 +2,10 @@ import os
 import asyncio
 import logging
 import sys
-import openai
+import json
+
+from openai import OpenAI
+
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.enums import ParseMode
@@ -15,19 +18,28 @@ from dotenv import load_dotenv
 load_dotenv()  # This is new, to load the environment variables from .env file
 
 TOKEN = os.getenv("TOKEN")  # Bot token
-openai.api_key = os.getenv("OPENAI_TOKEN")  # OpenAI token
 
 dp = Dispatcher()
+client = OpenAI()
+
+
+def show_json(obj):
+    print(json.loads(obj.model_dump_json()))
 
 
 async def ask_gpt(question: str) -> str:
     # Function to ask GPT a question and get the response
-    response = openai.Completion.create(
-        engine="text-davinci-003",  # You can use other available engines
-        prompt=question,
-        max_tokens=150
+    messages = [
+        {"role": "system", "content": 'You answer question about Web  services.'},
+        {"role": "user", "content": question},
+    ]
+    response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=messages,
+        temperature=0,
     )
-    return response.choices[0].text.strip()
+
+    return response.choices[0].message.content
 
 
 @dp.message()
