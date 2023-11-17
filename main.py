@@ -3,89 +3,147 @@ import asyncio
 import logging
 import sys
 
+from dotenv import load_dotenv
+
 from openai import OpenAI
+from openai import (APIConnectionError, APITimeoutError, AuthenticationError, BadRequestError,
+                    ConflictError, InternalServerError, NotFoundError, PermissionDeniedError,
+                    RateLimitError, UnprocessableEntityError)
 
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.enums import ParseMode
-from aiogram.filters import CommandStart
-from aiogram.filters import Command
+from aiogram.filters import CommandStart, Command
 from aiogram.types import Message, CallbackQuery
-from aiogram.utils.markdown import hbold
-from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from dotenv import load_dotenv
 
 from message_templates import message_templates
 
+load_dotenv()
+TOKEN = os.getenv("TOKEN")  # BOT TOKEN
 
-load_dotenv()  # This is new, to load the environment variables from .env file
-TOKEN = os.getenv("TOKEN")  # Bot token
-
+bot = Bot(TOKEN, parse_mode=ParseMode.HTML)
 dp = Dispatcher()
 client = OpenAI()
-bot = Bot(TOKEN, parse_mode=ParseMode.HTML)
 
-messages = {}
-user_languages = {}   # Track of user's current language
+# User data tracking
+user_messages = {}
+user_languages = {}
 
+# Language selection keyboard setup
 language_keyboard = InlineKeyboardBuilder()
-language_keyboard.add(types.InlineKeyboardButton(text="English🇬🇧", callback_data='en'),
-                      types.InlineKeyboardButton(text="Український🇺🇦", callback_data='ua'))
+language_keyboard.add(
+    types.InlineKeyboardButton(text="English🇬🇧", callback_data='en'),
+    types.InlineKeyboardButton(text="Український🇺🇦", callback_data='ua')
+)
 
 
+# Handlers
 @dp.callback_query(F.data.in_({"ua", "en"}))
-async def process_callback(callback: CallbackQuery):
-    user_languages[callback.from_user.id] = callback.data
-    message_template = message_templates[callback.data]['language_confirmation']
-    await callback.message.answer(text=message_template)
+async def handle_language_change(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    user_languages[user_id] = callback.data
+    await callback.message.answer(text=message_templates[callback.data]['language_confirmation'])
 
 
 @dp.message(Command('language'))
-async def language_cmd(message: types.Message):
-    language = user_languages.get(message.from_user.id, 'en')
+async def handle_language_command(message: types.Message):
+    user_id = message.from_user.id
+    language = user_languages.get(user_id, 'en')
     await message.answer(text=message_templates[language]['language_selection'],
                          reply_markup=language_keyboard.as_markup())
 
 
-async def ask_gpt(userid) -> str:
-    # Function to ask GPT a question and get the response
-    response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=messages[userid],
-        temperature=0,
-    )
+@dp.message(Command('help'))
+async def handle_help_command(message: types.Message):
+    user_id = message.from_user.id
+    language = user_languages.get(user_id, 'en')
+    await message.answer(text=message_templates[language]['help'])
 
-    return response.choices[0].message.content
+
+@dp.message(Command('image'))
+async def handle_image_command(message: types.Message):
+    user_id = message.from_user.id
+    language = user_languages.get(user_id, 'en')
+    prompt = message.text.replace('/image', '').strip()
+
+    if not prompt:
+        await message.reply(message_templates[language]['image_prompt'])
+        return
+
+    processing_message = await message.reply(message_templates[language]['processing'])
+    try:
+        image_url = await generate_image(prompt, user_id)
+        await bot.send_photo(chat_id=message.chat.id, photo=image_url)
+
+    except Exception as e:
+        await message.reply(message_templates[language]['image_error'])
+        logging.error(f"OpenAI API Error: {e}")
+
+    finally:
+        await bot.delete_message(chat_id=message.chat.id, message_id=processing_message.message_id)
+
+
+async def generate_image(prompt: str, user_id: int) -> str:
+    try:
+        response = client.images.generate(
+            model="dall-e-3",
+            prompt=prompt,
+            size="1024x1024",
+            quality="standard",
+            n=1,
+            user=str(user_id)
+        )
+        return response.data[0].url
+    except (APIConnectionError, APITimeoutError, AuthenticationError, BadRequestError,
+            ConflictError, InternalServerError, NotFoundError, PermissionDeniedError,
+            RateLimitError, UnprocessableEntityError) as e:
+        logging.error(f"Error generating image: {e}")
+        raise
 
 
 @dp.message(CommandStart())
-async def command_start_handler(message: Message) -> None:
-    """ This handler receives messages with `/start` command """
-    userid = message.from_user.id
-    messages[userid] = []
-    language = user_languages.get(message.from_user.id, 'en')  # Get the selected language
-    await message.reply(message_templates[language]['start'])  # Retrieve the correct message based on the language
+async def handle_start_command(message: Message):
+    user_id = message.from_user.id
+    user_messages[user_id] = []
+    user_languages.setdefault(user_id, 'en')
+    await message.reply(message_templates[user_languages[user_id]]['start'])
 
 
 @dp.message()
-async def gpt_response_handler(message: Message) -> None:
-    # GPT response handler
-    user_message = message.text
-    userid = message.from_user.id
-    if userid not in messages:
-        messages[userid] = []
+async def handle_generic_message(message: Message):
+    user_id = message.from_user.id
+    user_input = message.text.strip()
 
-    messages[userid].append({"role": "user", "content": user_message})
-    gpt_response = await ask_gpt(userid)
+    if user_id not in user_messages:
+        user_messages[user_id] = []
+
+    user_messages[user_id].append({"role": "user", "content": user_input})
+    gpt_response = await ask_gpt(user_id)
     await message.answer(gpt_response)
 
 
-async def main() -> None:
-    # Initialize Bot instance with a default parse mode which will be passed to all API calls
-    # And the run events dispatching
+async def ask_gpt(user_id: int) -> str:
+    language = user_languages.get(user_id, 'en')
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=user_messages[user_id],
+            temperature=0,
+            user=str(user_id)
+        )
+        return response.choices[0].message.content
+    except (APIConnectionError, APITimeoutError, AuthenticationError, BadRequestError,
+            ConflictError, InternalServerError, NotFoundError, PermissionDeniedError,
+            RateLimitError, UnprocessableEntityError) as e:
+        logging.error(f"Error in GPT response: {e}")
+        return message_templates[language]["error"]
+
+
+async def main():
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
     await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
     asyncio.run(main())
