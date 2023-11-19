@@ -89,6 +89,7 @@ async def handle_image_command(message: types.Message):
     user_id = message.from_user.id
     language = user_languages.get(user_id, 'en')
     prompt = message.text.replace('/image', '').strip()
+    print(prompt)
 
     if not prompt:
         await message.reply(message_templates[language]['image_prompt'])
@@ -136,6 +137,7 @@ async def handle_audio_command(message: types.Message):
     user_id = message.from_user.id
     language = user_languages.get(user_id, 'en')
     prompt = message.text.replace('/audio', '').strip()
+    print(prompt)
 
     if not prompt:
         await message.reply(message_templates[language]['audio_prompt'])
@@ -173,6 +175,45 @@ async def generate_audio(prompt: str) -> str:
     return str(speech_file_path)
 
 
+@dp.message(F.content_type.in_({'voice', 'audio'}))
+async def handle_audio_message(message: Message):
+    """
+    Handles audio and voice messages by transcribing their content.
+
+    :param message: The message object containing the voice or audio file.
+    """
+    user_id = message.from_user.id
+    language = user_languages.get(user_id, 'en')
+
+    file_id = message.voice.file_id if message.voice else message.audio.file_id
+
+    file = await bot.get_file(file_id)
+    file_path = file.file_path
+    await bot.download_file(file_path, "audio.mp3")
+
+    try:
+        transcript = await transcript_audio("audio.mp3")
+        await message.reply(transcript)
+    except Exception as e:
+        await handle_errors(e, message, language)
+
+
+async def transcript_audio(audio) -> str:
+    """
+    Transcribes the audio content to text.
+
+    :param audio: The file path of the audio file to be transcribed.
+    :return: A string representing the transcription of the audio.
+    """
+    with open(f"{audio}", "rb") as audio_file:
+        transcript = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=audio_file,
+            response_format="text"
+        )
+    return str(transcript)
+
+
 @dp.message(CommandStart())
 async def handle_start_command(message: Message):
     """
@@ -187,16 +228,20 @@ async def handle_start_command(message: Message):
     await message.reply(message_templates[user_languages[user_id]]['start'])
 
 
-@dp.message()
+@dp.message(Command('ask'))
 async def handle_generic_message(message: Message):
     """
-    Handles any generic messages that are not commands. Stores user's messages and gets responses from GPT model.
+    Handles ask command. Stores user's messages and gets responses from GPT model.
 
     :param message: The message object containing the user's text.
     """
     user_id = message.from_user.id
     language = user_languages.get(user_id, 'en')
-    user_input = message.text.strip()
+    user_input = message.text.replace('/ask', '').strip()
+    if not user_input:
+        await message.reply(message_templates[language]['ask'])
+        return
+    print(user_input)
 
     if user_id not in user_messages:
         user_messages[user_id] = []
