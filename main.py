@@ -32,15 +32,15 @@ client = OpenAI()
 
 def load_user_data():
     try:
-        with open("user_data.json", "r") as file:
+        with open("user_data.json", "r", encoding="utf-8") as file:
             return json.load(file)
     except FileNotFoundError:
         return {"users": {}}
 
 
 def save_user_data(data):
-    with open("user_data.json", "w") as file:
-        json.dump(data, file, indent=4)
+    with open("user_data.json", "w", encoding="utf-8") as file:
+        json.dump(data, file, indent=4, ensure_ascii=False)
 
 
 def get_user_info(user_id, info_type):
