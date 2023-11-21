@@ -36,7 +36,12 @@ dp = Dispatcher()
 client = OpenAI()
 
 
-def load_user_data():
+def load_user_data() -> dict:
+    """
+    Load user data from a JSON file.
+
+    :return: A dictionary containing the user data.
+    """
     try:
         with open("user_data.json", "r", encoding="utf-8") as file:
             return json.load(file)
@@ -44,34 +49,67 @@ def load_user_data():
         return {"users": {}}
 
 
-def save_user_data(data):
+def save_user_data(data: dict) -> None:
+    """
+    Save user data to a JSON file.
+
+    :param data: The user data dictionary to be saved.
+    """
     with open("user_data.json", "w", encoding="utf-8") as file:
         json.dump(data, file, indent=4, ensure_ascii=False)
 
 
-def get_user_info(user_id, info_type):
+def get_user_info(user_id: int, info_type: str) -> list:
+    """
+    Retrieve specific information for a user.
+
+    :param user_id: The user's unique identifier.
+    :param info_type: The type of information to retrieve.
+    :return: A list containing the requested information.
+    """
     return user_data["users"].get(str(user_id), {}).get(info_type, [])
 
 
-def set_user_info(user_id, info_type, data):
+def set_user_info(user_id: int, info_type: str, data) -> None:
+    """
+    Set specific information for a user.
+
+    :param user_id: The user's unique identifier.
+    :param info_type: The type of information to set.
+    :param data: The data to be set for the specified information type.
+    """
     user_data["users"].setdefault(str(user_id), {})[info_type] = data
     save_user_data(user_data)
 
 
-def add_user_usage(user_id, usage_type, data):
+def add_user_usage(user_id: int, usage_type: str, data: dict) -> None:
+    """
+    Add a record to a user's usage history.
+
+    :param user_id: The user's unique identifier.
+    :param usage_type: The type of usage (e.g., 'ask_usage').
+    :param data: The data to be added to the usage history.
+    """
     user_usage = get_user_info(user_id, usage_type)
     user_usage.append(data)
     set_user_info(user_id, usage_type, user_usage)
 
 
-def has_reached_daily_limit(user_id, limit):
+def has_reached_daily_limit(user_id: int, limit: str) -> bool:
+    """
+    Check if a user has reached their daily limit for a specific usage type.
+
+    :param user_id: The user's unique identifier.
+    :param limit: The limit type to check (e.g., 'ask_limit').
+    :return: True if the user has reached their limit, False otherwise.
+    """
     today = datetime.now().strftime("%Y-%m-%d")
-    usage = {
+    usage_key = {
         "ask_limit": "ask_usage",
         "image_limit": "image_usage",
         "audio_limit": "audio_usage"
     }
-    daily_usage = [usage for usage in get_user_info(user_id, usage[limit]) if usage['date'] == today]
+    daily_usage = [usage for usage in get_user_info(user_id, usage_key[limit]) if usage['date'] == today]
     return len(daily_usage) >= LIMITS[limit]
 
 
