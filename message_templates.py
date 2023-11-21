@@ -19,7 +19,10 @@ message_templates = {
         'language_confirmation': "Language has been set to English.",
         'language_selection': "Available in 2 languages:",
         'processing': "Your request is being processed, please wait.",
-        'error': "An error occurred during processing:"
+        'error': "An error occurred during processing:",
+        'ask_limit_reached': 'You have reached your daily limit for /ask command.',
+        'image_limit_reached': 'You have reached your daily limit for /image command.',
+        'audio_limit_reached': 'You have reached your daily limit for /audio command.'
     },
     'ua': {
         'start': "Привіт, я твій GPT помічник. Введіть /help",
@@ -39,6 +42,9 @@ message_templates = {
         'language_confirmation': "Обрана українська мова",
         'language_selection': "В наявності 2 мови",
         'processing': "Ваш запит обробляється, зачекайте.",
-        'error': "Під час обробки сталася помилка:"
+        'error': "Під час обробки сталася помилка:",
+        'ask_limit_reached': 'Ви досягли щоденного ліміту для команди /ask',
+        'image_limit_reached': 'Ви досягли щоденного ліміту для команди /image',
+        'audio_limit_reached': 'Ви досягли щоденного ліміту для команди /audio'
     }
 }
