@@ -1,4 +1,5 @@
 import os
+import json
 import asyncio
 import logging
 import traceback
@@ -28,9 +29,36 @@ bot = Bot(TOKEN, parse_mode=ParseMode.HTML)
 dp = Dispatcher()
 client = OpenAI()
 
-# User data tracking
-user_messages = {}
-user_languages = {}
+
+def load_user_data():
+    try:
+        with open("user_data.json", "r") as file:
+            return json.load(file)
+    except FileNotFoundError:
+        return {"users": {}}
+
+
+def save_user_data(data):
+    with open("user_data.json", "w") as file:
+        json.dump(data, file, indent=4)
+
+
+def get_user_info(user_id, info_type):
+    return user_data["users"].get(str(user_id), {}).get(info_type, [])
+
+
+def set_user_info(user_id, info_type, data):
+    user_data["users"].setdefault(str(user_id), {})[info_type] = data
+    save_user_data(user_data)
+
+
+def add_user_usage(user_id, usage_type, data):
+    user_usage = get_user_info(user_id, usage_type)
+    user_usage.append(data)
+    set_user_info(user_id, usage_type, user_usage)
+
+
+user_data = load_user_data()
 
 # Language selection keyboard setup
 language_keyboard = InlineKeyboardBuilder()
@@ -50,8 +78,9 @@ async def handle_language_change(callback: CallbackQuery):
     :param callback: The callback query from the user's action.
     """
     user_id = callback.from_user.id
-    user_languages[user_id] = callback.data
-    await callback.message.answer(text=message_templates[callback.data]['language_confirmation'])
+    set_user_info(user_id, "language", callback.data)
+    language = get_user_info(user_id, "language")
+    await callback.message.answer(text=message_templates[language]['language_confirmation'])
 
 
 @dp.message(Command('language'))
@@ -62,7 +91,7 @@ async def handle_language_command(message: types.Message):
     :param message: The message object containing the command.
     """
     user_id = message.from_user.id
-    language = user_languages.get(user_id, 'en')
+    language = get_user_info(user_id, "language")
     await message.answer(text=message_templates[language]['language_selection'],
                          reply_markup=language_keyboard.as_markup())
 
@@ -75,7 +104,7 @@ async def handle_help_command(message: types.Message):
     :param message: The message object containing the command.
     """
     user_id = message.from_user.id
-    language = user_languages.get(user_id, 'en')
+    language = get_user_info(user_id, "language")
     await message.answer(text=message_templates[language]['help'])
 
 
@@ -87,9 +116,8 @@ async def handle_image_command(message: types.Message):
     :param message: The message object containing the command and the prompt.
     """
     user_id = message.from_user.id
-    language = user_languages.get(user_id, 'en')
+    language = get_user_info(user_id, "language")
     prompt = message.text.replace('/image', '').strip()
-    print(prompt)
 
     if not prompt:
         await message.reply(message_templates[language]['image_prompt'])
@@ -98,6 +126,7 @@ async def handle_image_command(message: types.Message):
     processing_message = await message.reply(message_templates[language]['processing'])
     try:
         image_url = await generate_image(prompt, user_id)
+        add_user_usage(user_id, "image_usage", {"prompt": prompt, 'image_url': image_url})
         await bot.send_photo(chat_id=message.chat.id, photo=image_url)
     except Exception as e:
         await handle_errors(e, message, language)
@@ -123,7 +152,7 @@ async def generate_image(prompt: str, user_id: int) -> str:
     )
     if not response.data:
         raise ValueError("No data received from image generation API")
-
+    print(response.data[0].url)
     return response.data[0].url
 
 
@@ -135,9 +164,9 @@ async def handle_audio_command(message: types.Message):
     :param message: The message object containing the command and the prompt.
     """
     user_id = message.from_user.id
-    language = user_languages.get(user_id, 'en')
+    language = get_user_info(user_id, "language")
     prompt = message.text.replace('/audio', '').strip()
-    print(prompt)
+    add_user_usage(user_id, "audio_usage", {"prompt": prompt})
 
     if not prompt:
         await message.reply(message_templates[language]['audio_prompt'])
@@ -183,7 +212,7 @@ async def handle_audio_message(message: Message):
     :param message: The message object containing the voice or audio file.
     """
     user_id = message.from_user.id
-    language = user_languages.get(user_id, 'en')
+    language = get_user_info(user_id, "language")
 
     file_id = message.voice.file_id if message.voice else message.audio.file_id
 
@@ -193,6 +222,7 @@ async def handle_audio_message(message: Message):
 
     try:
         transcript = await transcript_audio("audio.mp3")
+        print(f"transcript: {transcript}")
         await message.reply(transcript)
     except Exception as e:
         await handle_errors(e, message, language)
@@ -223,9 +253,21 @@ async def handle_start_command(message: Message):
     :param message: The message object containing the start command.
     """
     user_id = message.from_user.id
-    user_messages[user_id] = []
-    user_languages.setdefault(user_id, 'en')
-    await message.reply(message_templates[user_languages[user_id]]['start'])
+    username = message.from_user.username
+
+    # Initialize user data if not existing
+    if str(user_id) not in user_data["users"]:
+        user_data["users"][str(user_id)] = {
+            "username": username,
+            "language": "en",
+            "ask_usage": [],
+            "image_usage": [],
+            "audio_usage": []
+        }
+        save_user_data(user_data)
+
+    language = get_user_info(user_id, "language")
+    await message.reply(message_templates[language]['start'])
 
 
 @dp.message(Command('ask'))
@@ -236,17 +278,16 @@ async def handle_generic_message(message: Message):
     :param message: The message object containing the user's text.
     """
     user_id = message.from_user.id
-    language = user_languages.get(user_id, 'en')
+    language = get_user_info(user_id, "language")
     user_input = message.text.replace('/ask', '').strip()
+
     if not user_input:
         await message.reply(message_templates[language]['ask'])
         return
-    print(user_input)
 
-    if user_id not in user_messages:
-        user_messages[user_id] = []
+    # Add user input to ask_usage and update user data
+    add_user_usage(user_id, "ask_usage", {"role": "user", "content": user_input})
 
-    user_messages[user_id].append({"role": "user", "content": user_input})
     try:
         gpt_response = await ask_gpt(user_id)
     except Exception as e:
@@ -262,9 +303,12 @@ async def ask_gpt(user_id: int) -> str:
     :param user_id: The user ID for whom the response is being generated.
     :return: A string containing the GPT model's response.
     """
+    # Fetching the user's ask_usage history
+    user_ask_history = get_user_info(user_id, "ask_usage")
+
     response = client.chat.completions.create(
         model="gpt-3.5-turbo",
-        messages=user_messages[user_id],
+        messages=user_ask_history,
         temperature=0,
         user=str(user_id)
     )
