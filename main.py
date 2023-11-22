@@ -27,8 +27,8 @@ load_dotenv()
 TOKEN = os.getenv("TOKEN")  # BOT TOKEN
 LIMITS = {
     "ask_limit": 10,
-    "audio_limit": 2,
-    "image_limit": 10
+    "audio_limit": 5,
+    "image_limit": 4
 }
 
 bot = Bot(TOKEN, parse_mode=ParseMode.HTML)
