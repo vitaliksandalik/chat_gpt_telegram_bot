@@ -1,3 +1,6 @@
 .env
 audio.mp3
 speech.mp3
+.idea
+__pycache__
+

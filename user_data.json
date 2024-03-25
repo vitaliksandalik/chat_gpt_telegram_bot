@@ -1,11 +1,11 @@
 {
-    "users": {
-        "399506165": {
-            "username": "vitaliksandalik",
-            "language": "ua",
-            "ask_usage": [],
-            "image_usage": [],
-            "audio_usage": []
-        }
+  "users": {
+    "399506165": {
+      "username": "vitaliksandalik",
+      "language": "ua",
+      "ask_usage": [],
+      "image_usage": [],
+      "audio_usage": []
     }
+  }
 }
