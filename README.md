@@ -95,4 +95,4 @@ Remember, the bot's ability to respond effectively depends on the prompts you pr
 
 ## Support
 
-If you encounter any issues or have questions, feel free to open an issue in the repository (if available) or contact the developer directly on Telegram.
+If you encounter any issues or have questions, feel free to open an issue in the repository or message me! I have multiple socials in my profile 🔗.
